@@ -54,7 +54,6 @@ select:focus,input:focus{outline:2px solid var(--red-lt);border-color:var(--red)
   border-radius:99px;background:#fff;color:var(--ink-2);cursor:pointer}
 .chip[aria-pressed=true]{background:var(--red-lt);border-color:var(--red);color:var(--red-dk);font-weight:600}
 .hint{font-size:11px;color:var(--ink-2)}
-.phone-only{display:none}
 .chip .hint{color:inherit;opacity:.75}
 .picker{width:100%;font-size:12.5px}
 .picker>summary{cursor:pointer;color:var(--red-dk);font-weight:600;
@@ -65,12 +64,22 @@ select:focus,input:focus{outline:2px solid var(--red-lt);border-color:var(--red)
   letter-spacing:.5px;color:var(--ink-2)}
 .chip.sm{font-size:11.5px;padding:3px 9px}
 
-.kpis{display:flex;flex-wrap:wrap;gap:9px;padding:11px 20px;background:var(--red-xlt);
-  border-bottom:1px solid var(--line)}
+/* The summary is the first thing worth seeing once a municipality is picked --
+   who won how many wards, and the shape of its electorate -- so it stays out.
+   It is compacted to a single scrollable line instead of a wrapping block of
+   tiles, which costs ~44px rather than ~72.  Only the per-column picker, which
+   is genuinely occasional, folds behind the More toggle.  (On phones the strip
+   still folds away with everything else -- see the 640px block.) */
+.kpis{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:7px;padding:7px 20px;
+  background:var(--red-xlt);border-bottom:1px solid var(--line);
+  -webkit-overflow-scrolling:touch}
+#row-pick{display:none}
+body.opts-open #row-pick{display:flex}
+#opts[aria-pressed=true]{background:var(--red);color:#fff}
 .kpi{background:#fff;border:1px solid var(--line);border-radius:5px;padding:6px 12px;min-width:96px}
 .kpi.wide{min-width:132px}
-.kpi .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-2)}
-.kpi .v{font-size:16px;font-weight:700;color:var(--red-dk);line-height:1.25}
+.kpi .k{font-size:9.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-2)}
+.kpi .v{font-size:15px;font-weight:700;color:var(--red-dk);line-height:1.3}
 
 /* landing state: a page carrying a whole state of municipalities opens on an
    invitation to pick one, not on 16,000 booths of table */
@@ -166,14 +175,15 @@ footer.notes .more b{color:var(--ink)}
      the per-column picker and the KPI strip all fold away behind the Options
      button, which frees roughly 190px -- the difference between one visible row
      and ten.  Everything is one tap away, and desktop is untouched. */
-  .phone-only{display:flex}
   .mast .sub{display:none}
   /* District and Municipality pair up on one line, Figures and More on the
-     next, and Expand folds into More -- two lines whatever the page carries */
+     next, and Expand and Export fold into More -- two lines whatever the page
+     carries.  The ward box stays: it is now a jump-to-ward, not a search. */
   #fld-dist,#fld-lb{flex:1 1 calc(50% - 5px);min-width:0}
-  #row-cols,#row-pick,.kpis,#fld-exp{display:none}
+  #fld-q{flex:1 1 100%;display:flex!important}
+  #row-cols,#row-pick,.kpis,#fld-exp,#fld-xls{display:none}
   body.opts-open #row-cols,body.opts-open #row-pick{display:flex}
-  body.opts-open #fld-exp{display:flex}
+  body.opts-open #fld-exp,body.opts-open #fld-xls{display:flex}
   body.opts-open .kpis{display:flex}
   #opts[aria-pressed=true]{background:var(--red);color:#fff}
   select,input[type=search]{min-width:0;width:100%;font-size:16px;padding:8px}
@@ -253,10 +263,12 @@ footer.notes .more b{color:var(--ink)}
         </div></div>
       <div class="fld half" id="fld-exp"><label id="l-exp"></label>
         <div class="seg"><button id="expand" type="button"></button></div></div>
-      <div class="fld half phone-only"><label id="l-opts"></label>
+      <div class="fld half" id="fld-xls"><label id="l-xls"></label>
+        <div class="seg"><button id="export" type="button"></button></div></div>
+      <div class="fld half" id="fld-opts"><label id="l-opts"></label>
         <div class="seg"><button id="opts" type="button" aria-pressed="false"></button></div></div>
-      <div class="fld mobile-hide"><label for="q" id="l-q"></label>
-        <input id="q" type="search"></div>
+      <div class="fld" id="fld-q"><label for="q" id="l-q"></label>
+        <input id="q" type="search" inputmode="numeric" autocomplete="off"></div>
     </div>
     <div class="row" id="row-cols">
       <div class="fld" style="flex:1"><label id="l-cols"></label>
@@ -345,7 +357,8 @@ const T = {
     figures:'হিসাব', pct:'শতাংশ', num:'সংখ্যা',
     boothsLbl:'বুথ', expand:'সব খুলুন / বন্ধ করুন',
     optsLbl:'আরও', opts:'কলাম ও হিসাব',
-    find:'খুঁজুন', qph:'ওয়ার্ড নম্বর, কেন্দ্র, দল বা পদবি…',
+    find:'ওয়ার্ড খুঁজুন', qph:'ওয়ার্ড নম্বর',
+    xls:'নামান', xlsBtn:'এক্সেলে নামান', noWard:w=>`${w} নম্বর ওয়ার্ড এখানে নেই।`,
     columns:'কলাম', pickSum:'কলাম আলাদা আলাদা বেছে নিন — দল সহ',
     pickAll:'সব / কিছু নয়', pickHint:'উপরের চিপে ক্লিক করলে গোটা ভাগটি চালু বা বন্ধ হয়।',
     tip:'ওয়ার্ডে ক্লিক করলে তার বুথ খুলবে · শিরোনামে ক্লিক করলে সাজানো হবে',
@@ -387,7 +400,8 @@ const T = {
     figures:'Figures', pct:'Percentage', num:'Numbers',
     boothsLbl:'Booths', expand:'Expand / collapse all',
     optsLbl:'More', opts:'Columns & stats',
-    find:'Find', qph:'ward no, AC, party or surname',
+    find:'Find ward', qph:'Ward number',
+    xls:'Export', xlsBtn:'Export for Excel', noWard:w=>`No ward ${w} here.`,
     columns:'Columns', pickSum:'Choose columns one by one — parties included',
     pickAll:'All / none', pickHint:'A group chip above turns its whole block on or off.',
     tip:'Click a ward to open its booths · click a header to sort',
@@ -562,15 +576,10 @@ function filteredIndex(){
 
 function currentRows(){
   let rows = filteredIndex().map(costWard);
-  if(S.q){
-    const q = S.q.toLowerCase();
-    rows = rows.filter(r => String(r.w)===q
-      || r.acn.toLowerCase().includes(q)
-      || acName(ACS[String(r.ac)]).toLowerCase().includes(q)
-      || (HASLB && lbName(r.lbi).toLowerCase().includes(q))
-      || r.win.p.toLowerCase()===q || partyName(r.win.p).toLowerCase()===q
-      || r.sur.some(s => (s[0]||'').toLowerCase().includes(q))
-      || r.kids.some(k => (k.name||'').toLowerCase().includes(q)));
+  /* the box takes a ward number and nothing else: type 14, see ward 14 */
+  if(S.q !== ''){
+    const n = parseInt(S.q, 10);
+    rows = isNaN(n) ? [] : rows.filter(r => r.w === n);
   }
   const {key,dir} = S.sort;
   const val = r => key==='k0' ? r.w
@@ -691,7 +700,8 @@ function render(){
   }
   $('#tbl tbody').innerHTML = body.join('');
   $('#empty').hidden = rows.length>0;
-  if(!rows.length) $('#empty').textContent = t().empty;
+  if(!rows.length)
+    $('#empty').textContent = S.q !== '' ? t().noWard(S.q) : t().empty;
   kpis(rows);
 }
 
@@ -719,6 +729,65 @@ function kpis(rows){
     box(L.kMus, fmtPct(g.m[8])+'%'),
     box(L.kSC, fmtPct(g.m[14])+'%'),
   ].join('');
+}
+
+/* ------------------------------------------------------------------ export
+   Writes what is actually on screen -- the chosen municipality, the ward
+   filter, the columns switched on, percentage or numbers, the sort, and any
+   booths opened.  UTF-8 with a byte-order mark so Excel reads the Bengali
+   correctly on a double-click. */
+function exportRows(){
+  const fields = activeFields(), rows = currentRows(), L = t();
+  const head = ['#', L.ward].concat(HASLB ? [L.lb] : [])
+      .concat([L.acShort, L.acName, L.booths]);
+  for(const f of fields){
+    if(f.kind==='sur'){ for(let i=1;i<=10;i++) head.push(L.surname(i)); }
+    else head.push(fieldLabel(f));
+  }
+  const out = [head];
+  const plain = (r, f) => {
+    if(f.kind==='m') return cell(r, f.ci);
+    if(f.kind==='p'){ const v = partyVal(r,f.pi);
+      return v==null ? '' : (S.mode==='num' ? Math.round(v) : fmtPct(v)); }
+    if(f.id==='valid') return r.valid;
+    if(f.id==='win')   return partyName(r.win.p);
+    if(f.id==='marg')  return r.valid ? fmtPct(r.win.margin/r.valid*100) : '';
+    return null;                                     // surnames handled below
+  };
+  const line = (r, kid, sn) => {
+    const row = [kid ? '' : sn, kid ? L.boothN(r.no) : L.wardN(r.w)]
+        .concat(HASLB ? [kid ? '' : lbName(r.lbi)] : [])
+        .concat(kid ? ['', r.name || '', ''] : [r.ac, r.acn, r.booths]);
+    for(const f of fields){
+      if(f.kind==='sur'){
+        for(let i=0;i<10;i++){
+          const s2 = r.sur[i];
+          row.push(!s2 ? '' : s2[0] + ' (' +
+            (S.mode==='num' ? fmtInt(s2[1]*r.tot/100) : fmtPct(s2[1])+'%') + ')');
+        }
+      } else row.push(plain(r, f));
+    }
+    return row;
+  };
+  let sn = 0;
+  for(const r of rows){
+    out.push(line(r, false, ++sn));
+    if(S.open.has(r.key))
+      for(const k of [...r.kids].sort((a,b)=>a.no-b.no)) out.push(line(k, true));
+  }
+  const q = v => { v = (v===undefined||v===null) ? '' : String(v);
+                   return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; };
+  const csv = '\ufeff' + out.map(r=>r.map(q).join(',')).join('\r\n') + '\r\n';
+
+  const who = HASLB && S.lb !== '' ? lbName(+S.lb).replace(/[^\w-]+/g,'_')
+                                   : (DATA.city||'wards').replace(/[^\w-]+/g,'_');
+  const name = who + '_wards_2026' + (S.q !== '' ? '_ward' + S.q : '') + '.csv';
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 }
 
 /* ------------------------------------------------------------------ chrome */
@@ -826,6 +895,7 @@ $('#pick-all').addEventListener('click', ()=>{
   S.on = new Set(all ? [] : FIELDS.map(f=>f.id));
   fillGroups(); render();
 });
+$('#export').addEventListener('click', exportRows);
 $('#opts').addEventListener('click', ()=>{
   const on = document.body.classList.toggle('opts-open');
   $('#opts').setAttribute('aria-pressed', String(on));
@@ -850,6 +920,65 @@ $('#tbl').addEventListener('click', e=>{
   }
 });
 
+/* ------------------------------------------------------------------ export
+   Writes what is actually on screen -- the chosen municipality, the ward
+   filter, the columns switched on, percentage or numbers, the sort, and any
+   booths opened.  UTF-8 with a byte-order mark so Excel reads the Bengali
+   correctly on a double-click. */
+function exportRows(){
+  const fields = activeFields(), rows = currentRows(), L = t();
+  const head = ['#', L.ward].concat(HASLB ? [L.lb] : [])
+      .concat([L.acShort, L.acName, L.booths]);
+  for(const f of fields){
+    if(f.kind==='sur'){ for(let i=1;i<=10;i++) head.push(L.surname(i)); }
+    else head.push(fieldLabel(f));
+  }
+  const out = [head];
+  const plain = (r, f) => {
+    if(f.kind==='m') return cell(r, f.ci);
+    if(f.kind==='p'){ const v = partyVal(r,f.pi);
+      return v==null ? '' : (S.mode==='num' ? Math.round(v) : fmtPct(v)); }
+    if(f.id==='valid') return r.valid;
+    if(f.id==='win')   return partyName(r.win.p);
+    if(f.id==='marg')  return r.valid ? fmtPct(r.win.margin/r.valid*100) : '';
+    return null;                                     // surnames handled below
+  };
+  const line = (r, kid, sn) => {
+    const row = [kid ? '' : sn, kid ? L.boothN(r.no) : L.wardN(r.w)]
+        .concat(HASLB ? [kid ? '' : lbName(r.lbi)] : [])
+        .concat(kid ? ['', r.name || '', ''] : [r.ac, r.acn, r.booths]);
+    for(const f of fields){
+      if(f.kind==='sur'){
+        for(let i=0;i<10;i++){
+          const s2 = r.sur[i];
+          row.push(!s2 ? '' : s2[0] + ' (' +
+            (S.mode==='num' ? fmtInt(s2[1]*r.tot/100) : fmtPct(s2[1])+'%') + ')');
+        }
+      } else row.push(plain(r, f));
+    }
+    return row;
+  };
+  let sn = 0;
+  for(const r of rows){
+    out.push(line(r, false, ++sn));
+    if(S.open.has(r.key))
+      for(const k of [...r.kids].sort((a,b)=>a.no-b.no)) out.push(line(k, true));
+  }
+  const q = v => { v = (v===undefined||v===null) ? '' : String(v);
+                   return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; };
+  const csv = '\ufeff' + out.map(r=>r.map(q).join(',')).join('\r\n') + '\r\n';
+
+  const who = HASLB && S.lb !== '' ? lbName(+S.lb).replace(/[^\w-]+/g,'_')
+                                   : (DATA.city||'wards').replace(/[^\w-]+/g,'_');
+  const name = who + '_wards_2026' + (S.q !== '' ? '_ward' + S.q : '') + '.csv';
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+
 /* ------------------------------------------------------------------ chrome */
 function chrome(){
   const L = t(), I = DATA.i18n[LANG];
@@ -873,6 +1002,8 @@ function chrome(){
   $('#mode').children[1].textContent = L.num;
   $('#expand').textContent = L.expand;
   $('#l-opts').textContent = L.optsLbl;
+  $('#l-xls').textContent = L.xls;
+  $('#export').textContent = L.xlsBtn;
   $('#opts').textContent = L.opts;
   $('#pick-sum').textContent = L.pickSum;
   $('#pick-all').textContent = L.pickAll;
@@ -903,10 +1034,11 @@ $('#lang').addEventListener('click', e=>{
    the viewport is that narrow -- on load and on any resize or rotation. */
 const PHONE = window.matchMedia('(max-width:640px)');
 function syncPhone(){
-  if(!PHONE.matches) return false;          // the municipality picker stays: it
-  if(S.ac==='' && S.q==='') return false;   // is the main way around this page
-  S.ac = ''; S.q = ''; S.open.clear();
-  $('#ac').value = ''; $('#q').value = '';
+  // Only the AC filter is hidden on phones now, so only it gets cleared; the
+  // municipality picker and the ward box are both still on screen.
+  if(!PHONE.matches || S.ac === '') return false;
+  S.ac = ''; S.open.clear();
+  $('#ac').value = '';
   return true;
 }
 PHONE.addEventListener ? PHONE.addEventListener('change', ()=>{ syncPhone(); render(); })
